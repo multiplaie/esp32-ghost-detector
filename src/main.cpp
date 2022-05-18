@@ -17,180 +17,131 @@
  */
 
 #include "BLEDevice.h"
-#include <WiFi.h>
-#include <PubSubClient.h>
 #include <math.h>
 #include <stdio.h>
 #include <Arduino.h>
 
-
-static BLEAddress *pServerAddress;
-
-#define LED_LOW 22
-#define LED_MID 21
-#define LED_HIGH 19
+#define LED_LOW_LOW 32
+#define LED_LOW_MID 33
+#define LED_MID_LOW 25
+#define LED_MID_HIGH 26
+#define LED_HIGH_MID 27
+#define LED_HIGH_HIGH 14
+#define LED_DIST_OFF -100
+#define LED_DIST_LOW_LOW -95
+#define LED_DIST_LOW_MID -85
+#define LED_DIST_MID_LOW -75
+#define LED_DIST_MID_HIGH -65
+#define LED_DIST_HIGH_MID -55
 
 BLEScan* pBLEScan;
 BLEClient*  pClient;
 bool deviceFound = false;
-
-String knownAddresses[] = { "fb:97:03:d2:41:5e"};
-
-const char* ssid = "***";
-const char* password = "***";
-const char* mqtt_server = "192.168.0.203";  // change for your own MQTT broker address
-#define TOPIC "outTopic"  // Change for your own topic
-#define PAYLOAD "1"    // change for your own payload
-
- unsigned long entry;
-
-WiFiClient espClient;
-PubSubClient MQTTclient(espClient);
-
+String knownAddresses[] = { "fb:97:03:d2:41:5e", "fa:5d:de:60:af:3a"};
 String deviceAdd;
 int deviceRssi = -200;
 const short int limitResearch = 7;
 int currentIndexResearch = 0;
-const short int limitFailed = 5;
+const short int limitFailed = 3;
 short int currentFailed = 0;
-static void notifyCallback(
-  BLERemoteCharacteristic* pBLERemoteCharacteristic,
-  uint8_t* pData,
-  size_t length,
-  bool isNotify) {
-  Serial.print("Notify callback for characteristic ");
-  Serial.print(pBLERemoteCharacteristic->getUUID().toString().c_str());
-  Serial.print(" of data length ");
-  Serial.println(length);
-}
+
 
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     /**
         Called for each advertising BLE server.
     */
     void onResult(BLEAdvertisedDevice advertisedDevice) {
-      //Serial.print("BLE Advertised Device found: ");
-      //Serial.println(advertisedDevice.toString().c_str());
-      pServerAddress = new BLEAddress(advertisedDevice.getAddress());
-
       bool known = false;
       for (int i = 0; i < (sizeof(knownAddresses) / sizeof(knownAddresses[0])); i++) {
-        if (strcmp(pServerAddress->toString().c_str(), knownAddresses[i].c_str()) == 0) known = true;
+        if (strcmp(advertisedDevice.getAddress().toString().c_str(), knownAddresses[i].c_str()) == 0) known = true;
       }
       if (known) {
         printf("Device found: %d - pos: %d ",advertisedDevice.getRSSI(), currentIndexResearch);
         Serial.println(advertisedDevice.getRSSI());
-        //if (advertisedDevice.getRSSI() > -80) deviceFound = true;
-        //else deviceFound = false;
         deviceFound = true;
         if(deviceRssi < advertisedDevice.getRSSI()){
-          deviceAdd = pServerAddress->toString().c_str();
+          deviceAdd = advertisedDevice.getAddress().toString().c_str();
           deviceRssi = advertisedDevice.getRSSI();
         }
-        //Serial.println(pServerAddress->toString().c_str());
-        
       }
-
-      /******** This releases the memory when we're done. ********/
-      delete pServerAddress; 
       if(currentIndexResearch >= limitResearch )
         advertisedDevice.getScan()->stop();
       else currentIndexResearch = currentIndexResearch+1;
    }
-}; // MyAdvertisedDeviceCallbacks
-
-
-void MQTTcallback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Message arrived [");
-  Serial.print(topic);
-  Serial.print("] ");
-  for (int i = 0; i < length; i++) {
-    Serial.print((char)payload[i]);
-  }
-  Serial.println();
-}
-
-void sendMessage() {
-  //btStop();
-  delay(10);
-  // We start by connecting to a WiFi network
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(ssid);
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  entry = millis();
-  while (WiFi.status() != WL_CONNECTED) {
-    if (millis() - entry >= 15000) esp_restart();
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.print("WiFi connected, IP address: ");
-  Serial.println(WiFi.localIP());
-  MQTTclient.setServer(mqtt_server, 1883);
-  MQTTclient.setCallback(MQTTcallback);
-  Serial.println("Connect to MQTT server...");
-  while (!MQTTclient.connected()) {
-    Serial.print("Attempting MQTT connection...");
-    // Attempt to connect
-    if (MQTTclient.connect("ESP8266Client", "admin", "admin")) {
-      Serial.println("connected");
-      MQTTclient.publish(TOPIC, PAYLOAD);
-    } else {
-      Serial.print("failed, rc=");
-      Serial.print(MQTTclient.state());
-      Serial.println(" try again in 5 seconds");
-      // Wait 5 seconds before retrying
-      delay(1000);
-    }
-  }
-  for (int i = 0; i > 10; i++) {
-    MQTTclient.loop();
-    delay(100);
-  }
-  MQTTclient.disconnect();
-  delay(100);
-  WiFi.mode(WIFI_OFF);
-  btStart();
-}
+}; 
 
 void distanceLED()
 {
-    if(deviceRssi < -100 && currentFailed >= limitFailed){
-      digitalWrite(LED_LOW, LOW);
-      digitalWrite(LED_MID, LOW);
-      digitalWrite(LED_HIGH, LOW);
-    }else if(deviceRssi > -100 && deviceRssi < -87){
-      digitalWrite(LED_LOW, HIGH);
-      digitalWrite(LED_MID, LOW);
-      digitalWrite(LED_HIGH, LOW);
-    }else if(deviceRssi > -87 && deviceRssi < -75){
-      digitalWrite(LED_LOW, HIGH);
-      digitalWrite(LED_MID, HIGH);
-      digitalWrite(LED_HIGH, LOW);
-    }else if(deviceRssi > -75){
-      digitalWrite(LED_LOW, HIGH);
-      digitalWrite(LED_MID, HIGH);
-      digitalWrite(LED_HIGH, HIGH);
+    if(deviceRssi < LED_DIST_OFF && currentFailed >= limitFailed){
+      digitalWrite(LED_LOW_LOW, LOW);
+      digitalWrite(LED_LOW_MID, LOW);
+      digitalWrite(LED_MID_LOW, LOW);
+      digitalWrite(LED_MID_HIGH, LOW);
+      digitalWrite(LED_HIGH_MID, LOW);
+      digitalWrite(LED_HIGH_HIGH, LOW);
+    }else if(deviceRssi > LED_DIST_OFF && deviceRssi < LED_DIST_LOW_LOW){
+      digitalWrite(LED_LOW_LOW, HIGH);
+      digitalWrite(LED_LOW_MID, LOW);
+      digitalWrite(LED_MID_LOW, LOW);
+      digitalWrite(LED_MID_HIGH, LOW);
+      digitalWrite(LED_HIGH_MID, LOW);
+      digitalWrite(LED_HIGH_HIGH, LOW);
+    }else if(deviceRssi > LED_DIST_LOW_LOW && deviceRssi < LED_DIST_LOW_MID){
+      digitalWrite(LED_LOW_LOW, HIGH);
+      digitalWrite(LED_LOW_MID, HIGH);
+      digitalWrite(LED_MID_LOW, LOW);
+      digitalWrite(LED_MID_HIGH, LOW);
+      digitalWrite(LED_HIGH_MID, LOW);
+      digitalWrite(LED_HIGH_HIGH, LOW);
+    }else if(deviceRssi > LED_DIST_LOW_MID && deviceRssi < LED_DIST_MID_LOW){
+      digitalWrite(LED_LOW_LOW, HIGH);
+      digitalWrite(LED_LOW_MID, HIGH);
+      digitalWrite(LED_MID_LOW, HIGH);
+      digitalWrite(LED_MID_HIGH, LOW);
+      digitalWrite(LED_HIGH_MID, LOW);
+      digitalWrite(LED_HIGH_HIGH, LOW);
+    }else if(deviceRssi > LED_DIST_MID_LOW && deviceRssi < LED_DIST_MID_HIGH){
+      digitalWrite(LED_LOW_LOW, HIGH);
+      digitalWrite(LED_LOW_MID, HIGH);
+      digitalWrite(LED_MID_LOW, HIGH);
+      digitalWrite(LED_MID_HIGH, HIGH);
+      digitalWrite(LED_HIGH_MID, LOW);
+      digitalWrite(LED_HIGH_HIGH, LOW);
+    }else if(deviceRssi > LED_DIST_MID_HIGH && deviceRssi < LED_DIST_HIGH_MID){
+      digitalWrite(LED_LOW_LOW, HIGH);
+      digitalWrite(LED_LOW_MID, HIGH);
+      digitalWrite(LED_MID_LOW, HIGH);
+      digitalWrite(LED_MID_HIGH, HIGH);
+      digitalWrite(LED_HIGH_MID, HIGH);
+      digitalWrite(LED_HIGH_HIGH, LOW);
+    }else if(deviceRssi > LED_DIST_HIGH_MID){
+      digitalWrite(LED_LOW_LOW, HIGH);
+      digitalWrite(LED_LOW_MID, HIGH);
+      digitalWrite(LED_MID_LOW, HIGH);
+      digitalWrite(LED_MID_HIGH, HIGH);
+      digitalWrite(LED_HIGH_MID, HIGH);
+      digitalWrite(LED_HIGH_HIGH, HIGH);
     }
-}
+  }
 
 
 void setup() {
   Serial.begin(115200);
   Serial.println("Starting Arduino BLE Client application...");
-  pinMode(LED_LOW, OUTPUT);
-  pinMode(LED_MID, OUTPUT);
-  pinMode(LED_HIGH, OUTPUT);
-  digitalWrite(LED_LOW, LOW);
-  digitalWrite(LED_MID, LOW);
-  digitalWrite(LED_HIGH, LOW);
+  pinMode(LED_LOW_LOW, OUTPUT);
+  pinMode(LED_LOW_MID, OUTPUT);
+  pinMode(LED_MID_LOW, OUTPUT);
+  pinMode(LED_MID_HIGH, OUTPUT);
+  pinMode(LED_HIGH_MID, OUTPUT);
+  pinMode(LED_HIGH_HIGH, OUTPUT);
+  digitalWrite(LED_LOW_LOW, LOW);
+  digitalWrite(LED_LOW_MID, LOW);
+  digitalWrite(LED_MID_LOW, LOW);
+  digitalWrite(LED_MID_HIGH, LOW);
+  digitalWrite(LED_HIGH_MID, LOW);
+  digitalWrite(LED_HIGH_HIGH, LOW);
 
   BLEDevice::init("");
-
   pClient  = BLEDevice::createClient();
   Serial.println(" - Created client");
   pBLEScan = BLEDevice::getScan();
@@ -199,14 +150,12 @@ void setup() {
 }
 
 void loop() {
-
-  Serial.println();
   Serial.println("BLE Scan restarted.....");
   deviceFound = false;
   deviceAdd = "";
   deviceRssi = -200;
   currentIndexResearch = 0;
-  BLEScanResults scanResults = pBLEScan->start(30);
+  BLEScanResults scanResults = pBLEScan->start(2.5);
   if (deviceFound) {
     Serial.println("------");
     Serial.println(deviceAdd);
@@ -218,9 +167,5 @@ void loop() {
   else {
     currentFailed = currentFailed +1;
   }
-
   distanceLED();
- // delay(1000);
-
-  
-} // End of loop
+} 
