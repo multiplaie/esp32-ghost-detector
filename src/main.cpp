@@ -1,50 +1,24 @@
-
-/*
- * 
- * This detects advertising messages of BLE devices and compares it with stored MAC addresses. 
- * If one matches, it sends an MQTT message to swithc something
-   Copyright <2017> <Andreas Spiess>
-  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"),
-  to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
-  and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-  DEALINGS IN THE SOFTWARE.
-   
-   Based on Neil Kolban's example file: https://github.com/nkolban/ESP32_BLE_Arduino
- */
-
 #include "BLEDevice.h"
 #include <math.h>
 #include <stdio.h>
 #include <Arduino.h>
+#include "LedCtrl.h"
+#include "BuzzerConfig.h"
 
-#define LED_LOW_LOW 32
-#define LED_LOW_MID 33
-#define LED_MID_LOW 25
-#define LED_MID_HIGH 26
-#define LED_HIGH_MID 27
-#define LED_HIGH_HIGH 14
-#define LED_DIST_OFF -100
-#define LED_DIST_LOW_LOW -95
-#define LED_DIST_LOW_MID -85
-#define LED_DIST_MID_LOW -75
-#define LED_DIST_MID_HIGH -65
-#define LED_DIST_HIGH_MID -55
-
+/*BLE*/
 BLEScan* pBLEScan;
 BLEClient*  pClient;
 bool deviceFound = false;
-String knownAddresses[] = { "fb:97:03:d2:41:5e", "fa:5d:de:60:af:3a"};
+String knownAddresses[] = {/* "fb:97:03:d2:41:5e", */"fa:5d:de:60:af:3a"};
 String deviceAdd;
 int deviceRssi = -200;
-const short int limitResearch = 7;
+const short int limitResearch = 20;
 int currentIndexResearch = 0;
 const short int limitFailed = 3;
 short int currentFailed = 0;
 
+/*Buzzer var*/
+int currentFreqBuzzer = freqBuzzerInit;
 
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     /**
@@ -52,17 +26,13 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     */
     void onResult(BLEAdvertisedDevice advertisedDevice) {
       bool known = false;
-      for (int i = 0; i < (sizeof(knownAddresses) / sizeof(knownAddresses[0])); i++) {
-        if (strcmp(advertisedDevice.getAddress().toString().c_str(), knownAddresses[i].c_str()) == 0) known = true;
-      }
-      if (known) {
-        printf("Device found: %d - pos: %d ",advertisedDevice.getRSSI(), currentIndexResearch);
+      //printf("Device found: %d - pos: %d - address: %s \n",advertisedDevice.getRSSI(), currentIndexResearch, advertisedDevice.getAddress().toString().c_str());
+      if (strcmp(advertisedDevice.getAddress().toString().c_str(), knownAddresses[0].c_str()) == 0) {
         Serial.println(advertisedDevice.getRSSI());
         deviceFound = true;
-        if(deviceRssi < advertisedDevice.getRSSI()){
-          deviceAdd = advertisedDevice.getAddress().toString().c_str();
-          deviceRssi = advertisedDevice.getRSSI();
-        }
+        deviceAdd = advertisedDevice.getAddress().toString().c_str();
+        deviceRssi = advertisedDevice.getRSSI();
+        advertisedDevice.getScan()->stop();
       }
       if(currentIndexResearch >= limitResearch )
         advertisedDevice.getScan()->stop();
@@ -70,102 +40,113 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
    }
 }; 
 
-void distanceLED()
+void IHMProximity()
 {
-    if(deviceRssi < LED_DIST_OFF && currentFailed >= limitFailed){
-      digitalWrite(LED_LOW_LOW, LOW);
-      digitalWrite(LED_LOW_MID, LOW);
-      digitalWrite(LED_MID_LOW, LOW);
-      digitalWrite(LED_MID_HIGH, LOW);
-      digitalWrite(LED_HIGH_MID, LOW);
-      digitalWrite(LED_HIGH_HIGH, LOW);
-    }else if(deviceRssi > LED_DIST_OFF && deviceRssi < LED_DIST_LOW_LOW){
-      digitalWrite(LED_LOW_LOW, HIGH);
-      digitalWrite(LED_LOW_MID, LOW);
-      digitalWrite(LED_MID_LOW, LOW);
-      digitalWrite(LED_MID_HIGH, LOW);
-      digitalWrite(LED_HIGH_MID, LOW);
-      digitalWrite(LED_HIGH_HIGH, LOW);
-    }else if(deviceRssi > LED_DIST_LOW_LOW && deviceRssi < LED_DIST_LOW_MID){
-      digitalWrite(LED_LOW_LOW, HIGH);
-      digitalWrite(LED_LOW_MID, HIGH);
-      digitalWrite(LED_MID_LOW, LOW);
-      digitalWrite(LED_MID_HIGH, LOW);
-      digitalWrite(LED_HIGH_MID, LOW);
-      digitalWrite(LED_HIGH_HIGH, LOW);
-    }else if(deviceRssi > LED_DIST_LOW_MID && deviceRssi < LED_DIST_MID_LOW){
-      digitalWrite(LED_LOW_LOW, HIGH);
-      digitalWrite(LED_LOW_MID, HIGH);
-      digitalWrite(LED_MID_LOW, HIGH);
-      digitalWrite(LED_MID_HIGH, LOW);
-      digitalWrite(LED_HIGH_MID, LOW);
-      digitalWrite(LED_HIGH_HIGH, LOW);
-    }else if(deviceRssi > LED_DIST_MID_LOW && deviceRssi < LED_DIST_MID_HIGH){
-      digitalWrite(LED_LOW_LOW, HIGH);
-      digitalWrite(LED_LOW_MID, HIGH);
-      digitalWrite(LED_MID_LOW, HIGH);
-      digitalWrite(LED_MID_HIGH, HIGH);
-      digitalWrite(LED_HIGH_MID, LOW);
-      digitalWrite(LED_HIGH_HIGH, LOW);
-    }else if(deviceRssi > LED_DIST_MID_HIGH && deviceRssi < LED_DIST_HIGH_MID){
-      digitalWrite(LED_LOW_LOW, HIGH);
-      digitalWrite(LED_LOW_MID, HIGH);
-      digitalWrite(LED_MID_LOW, HIGH);
-      digitalWrite(LED_MID_HIGH, HIGH);
-      digitalWrite(LED_HIGH_MID, HIGH);
-      digitalWrite(LED_HIGH_HIGH, LOW);
-    }else if(deviceRssi > LED_DIST_HIGH_MID){
-      digitalWrite(LED_LOW_LOW, HIGH);
-      digitalWrite(LED_LOW_MID, HIGH);
-      digitalWrite(LED_MID_LOW, HIGH);
-      digitalWrite(LED_MID_HIGH, HIGH);
-      digitalWrite(LED_HIGH_MID, HIGH);
-      digitalWrite(LED_HIGH_HIGH, HIGH);
-    }
+  if(deviceRssi < LED_DIST_OFF && currentFailed >= limitFailed){
+    ledcWriteTone(channelBuzzer, freqBuzzerNone);
+    currentFreqBuzzer = freqBuzzerNone;
+    ledCtrlRaz();
   }
+  else if(deviceRssi > LED_DIST_OFF && deviceRssi < LED_DIST_LOW_LOW) {
+    ledcWriteTone(channelBuzzer, freqBuzzerNone);
+    ledCtrlLightUp(1,0,0,0,0,0);
+    delay(100);
+    ledCtrlRaz();
+    currentFreqBuzzer = freqBuzzerLow;
+  }
+
+  else if(deviceRssi > LED_DIST_LOW_LOW && deviceRssi < LED_DIST_LOW_MID) {
+    ledcWriteTone(channelBuzzer, freqBuzzerNone);
+    ledCtrlLightUp(1,1,0,0,0,0);
+    delay(100);
+    ledCtrlRaz();
+    currentFreqBuzzer = freqBuzzerLow;
+  }
+  else if(deviceRssi > LED_DIST_LOW_MID && deviceRssi < LED_DIST_MID_LOW) {
+    ledcWriteTone(channelBuzzer, freqBuzzerLow);
+    ledCtrlLightUp(1,1,1,0,0,0);
+    delay(150);
+    ledcWriteTone(channelBuzzer, freqBuzzerNone);
+    ledCtrlRaz();
+    currentFreqBuzzer = freqBuzzerLow;
+  }
+  else if(deviceRssi > LED_DIST_MID_LOW && deviceRssi < LED_DIST_MID_HIGH){
+    ledcWriteTone(channelBuzzer, freqBuzzerLow);
+    ledCtrlLightUp(1,1,1,1,0,0);
+    delay(150);
+    ledcWriteTone(channelBuzzer, freqBuzzerNone);
+    ledCtrlRaz();
+    currentFreqBuzzer = freqBuzzerLow;
+  } 
+  else if(deviceRssi > LED_DIST_MID_HIGH && deviceRssi < LED_DIST_HIGH_MID){
+    ledcWriteTone(channelBuzzer, freqBuzzerHigh);
+    ledCtrlLightUp(1,1,1,1,1,0);
+    delay(150);
+    currentFreqBuzzer = freqBuzzerHigh;
+  } 
+  else if(deviceRssi > LED_DIST_HIGH_MID){
+    ledcWriteTone(channelBuzzer, freqBuzzerHigh);
+    ledCtrlLightUp(1,1,1,1,1,1);
+    delay(150);
+    currentFreqBuzzer = freqBuzzerHigh;
+  } 
+}
 
 
 void setup() {
+  
+  //console
   Serial.begin(115200);
-  Serial.println("Starting Arduino BLE Client application...");
-  pinMode(LED_LOW_LOW, OUTPUT);
-  pinMode(LED_LOW_MID, OUTPUT);
-  pinMode(LED_MID_LOW, OUTPUT);
-  pinMode(LED_MID_HIGH, OUTPUT);
-  pinMode(LED_HIGH_MID, OUTPUT);
-  pinMode(LED_HIGH_HIGH, OUTPUT);
-  digitalWrite(LED_LOW_LOW, LOW);
-  digitalWrite(LED_LOW_MID, LOW);
-  digitalWrite(LED_MID_LOW, LOW);
-  digitalWrite(LED_MID_HIGH, LOW);
-  digitalWrite(LED_HIGH_MID, LOW);
-  digitalWrite(LED_HIGH_HIGH, LOW);
 
+  //Ble
+  Serial.println("Starting Arduino BLE Client application...");
   BLEDevice::init("");
   pClient  = BLEDevice::createClient();
-  Serial.println(" - Created client");
   pBLEScan = BLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
   pBLEScan->setActiveScan(true);
+
+  //LED
+  ledCtrlSetupPins();
+  
+  //Buzzer
+  ledcSetup(channelBuzzer, freqBuzzerInit, resolutionBuzzer);
+  ledcAttachPin(pinBuzzer, channelBuzzer);
+}
+
+float distance(int deviceRssi){
+  /*
+    calc distance in meter
+    10^((rssi_for_1_meter - device_rssi)/(10*pertubation [2-4]))
+
+    rssi_for_1_meter : rssi of target device at 1 meter proximity
+    device_rssi: rssi value get by ble
+    perturbation [2-4] : coeff perturbation 2 => low, 4 => high
+  */
+  return (float)pow((float)10, (((float)-70 - (float)deviceRssi) / (float)(40)));
 }
 
 void loop() {
+  ledcWriteTone(channelBuzzer, currentFreqBuzzer);
   Serial.println("BLE Scan restarted.....");
   deviceFound = false;
   deviceAdd = "";
   deviceRssi = -200;
   currentIndexResearch = 0;
-  BLEScanResults scanResults = pBLEScan->start(2.5);
+  BLEScanResults scanResults = pBLEScan->start(2);
+  
+
   if (deviceFound) {
     Serial.println("------");
     Serial.println(deviceAdd);
     Serial.println(deviceRssi);
-    printf("distance: %f\n", (float)pow((float)10, (((float)-70 - (float)deviceRssi) / (float)(10*4))));
     Serial.println("------");
     currentFailed = 0;
   }
   else {
     currentFailed = currentFailed +1;
   }
-  distanceLED();
+    IHMProximity();
+Serial.println(currentFailed);
+  
 } 
