@@ -1,25 +1,30 @@
-#include "BLEDevice.h"
-#include <math.h>
+#include "BLEDevice.h"      // Manage and scan BLE Device 
+#include <math.h>          
 #include <stdio.h>
 #include <Arduino.h>
-#include "LedCtrl.h"
-#include "BuzzerConfig.h"
+#include "BuzzerConfig.h"   // Constant vars for buzzer
+#include "LedCtrl.h"        // Interface Scanner and FastLed
 
 /*BLE*/
-BLEScan* pBLEScan;
-BLEClient*  pClient;
-bool deviceFound = false;
-String knownAddresses[] = {/* "fb:97:03:d2:41:5e", */"fa:5d:de:60:af:3a"};
-String deviceAdd;
-int deviceRssi = -200;
-const short int limitResearch = 20;
-int currentIndexResearch = 0;
-const short int limitFailed = 3;
-short int currentFailed = 0;
+BLEScan* pBLEScan;                  //scan BLE object
+BLEClient*  pClient;                //client BLE
+bool deviceFound = false;           //Flag 
+String knownAddresses[] = {/* "fb:97:03:d2:41:5e", */"fa:5d:de:60:af:3a"}; // address to search
+String deviceAdd;                   //address of device scanned
+int deviceRssi = -200;              //init rssi device scanned
+const short int limitResearch = 20; //limit of devices during scan
+int currentIndexResearch = 0;       // index of current reading device 
+const short int limitFailed = 3;    // max of missed 
+short int currentFailed = 0;        // current miss
 
 /*Buzzer var*/
-int currentFreqBuzzer = freqBuzzerInit;
+int currentFreqBuzzer = freqBuzzerInit; // default buzz frequency
 
+
+
+/***
+ * Device objects scanned
+*/
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     /**
         Called for each advertising BLE server.
@@ -40,6 +45,12 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
    }
 }; 
 
+
+/***
+ * 
+ * Switch lights by distance steps
+ *
+ */
 void IHMProximity()
 {
   if(deviceRssi < LED_DIST_OFF && currentFailed >= limitFailed){
@@ -106,23 +117,25 @@ void setup() {
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
   pBLEScan->setActiveScan(true);
 
-  //LED
-  ledCtrlSetupPins();
-  
   //Buzzer
   ledcSetup(channelBuzzer, freqBuzzerInit, resolutionBuzzer);
   ledcAttachPin(pinBuzzer, channelBuzzer);
+
+  //LED 
+  ledCtrlSetupPins();
 }
 
-float distance(int deviceRssi){
-  /*
+/***
     calc distance in meter
     10^((rssi_for_1_meter - device_rssi)/(10*pertubation [2-4]))
 
     rssi_for_1_meter : rssi of target device at 1 meter proximity
     device_rssi: rssi value get by ble
     perturbation [2-4] : coeff perturbation 2 => low, 4 => high
+
+    -->not use for now
   */
+float distance(int deviceRssi){
   return (float)pow((float)10, (((float)-70 - (float)deviceRssi) / (float)(40)));
 }
 
